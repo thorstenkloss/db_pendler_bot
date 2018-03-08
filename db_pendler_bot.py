@@ -60,7 +60,7 @@ def start(bot, update):
     logger.info("User %s started", user.first_name)
     
     bot.send_message(chat_id=update.message.chat_id, 
-                     text="*Hi, which station are you leaving from?*",
+                     text="*Hi, which station are you leaving from?* Use /reset to reset the selection.",
                      parse_mode=ParseMode.MARKDOWN)
     
     return STATION
@@ -72,10 +72,14 @@ def station(bot, update):
     
     global stationsRes
     stationsRes = searchStations(update.message.text)
+
+    if len(stationsRes) == 0:
+        bot.send_message(chat_id=update.message.chat_id, text="Sorry, I don't know that station. Please try again.")
+        return STATION
     
     reply_keyboard  = [InlineKeyboardButton(station['name'], callback_data=station['name']) for station in stationsRes]
     reply_markup = InlineKeyboardMarkup(build_menu(reply_keyboard, 1), one_time_keyboard=True)
-    bot.send_message(chat_id=update.message.chat_id, text="which station exactly?", reply_markup=reply_markup)
+    bot.send_message(chat_id=update.message.chat_id, text="Which station exactly?", reply_markup=reply_markup)
     
     return TIME
 
@@ -100,7 +104,7 @@ def time(bot, update):
     bot.send_chat_action(chat_id=callback.message.chat_id, action=ChatAction.TYPING)
     t.sleep(0.5)
     
-    bot.send_message(chat_id=callback.message.chat_id, text="When are you usually leaving?")
+    bot.send_message(chat_id=callback.message.chat_id, text="When are you usually leaving? (Format: HH:MM or HH:MM am/pm)")
     
     return TRAIN
 
@@ -190,16 +194,16 @@ def done(bot, update):
         userDB.addUser(user.id, stationRes, evaIDRes, timeRes, trainRes, directionRes)
     else:
         userDB.updateUser(user.id, stationRes, evaIDRes, timeRes, trainRes, directionRes)
-  
-    jobQueue.run_daily(checkDelay, (datetime.time(*t.strptime(timeRes, '%H:%M:%S')[:6])+datetime.timedelta(minutes=-20)).time(), context=callback.message)
+        
+    jobQueue.run_daily(checkDelay, (datetime.datetime(*t.strptime(timeRes, '%H:%M:%S')[:5])+datetime.timedelta(minutes=-20)).time(), context=callback.message)
 
 def runJob(bot, update):
     jobQueue.run_once(checkDelay, 0, context=update.message)
 
-def fallback(bot, update):
+def reset(bot, update):
     user = update['message']['chat']
-    logger.info("User %s did something strange...", user.first_name)
-    bot.send_message(chat_id=update.message.chat_id, text="Huh, what did you do? Please /start again!")
+    logger.info("User %s reset...", user.first_name)
+    bot.send_message(chat_id=update.message.chat_id, text="You can /start again.")
     
 conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -216,7 +220,8 @@ conv_handler = ConversationHandler(
             DONE: [CallbackQueryHandler(done)]
         },
 
-        fallbacks=[CommandHandler('fallback', fallback)]
+        fallbacks=[CommandHandler('reset', reset)],
+        allow_reentry=True
     )
 
 
